@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puppydoku 皇后謎題</title>
+<style>
+  :root {
+    --bg: #f6f3ee;
+    --panel: #ffffff;
+    --text: #2b2b2b;
+    --muted: #777;
+    --line: #2b2b2b;
+    --thin: rgba(0,0,0,.18);
+    --accent: #e07a3f;
+    --bad: #e23b3b;
+    --sel: #1e6fd9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+    display: flex; justify-content: center; padding: 16px;
+  }
+  .wrap { width: 100%; max-width: 560px; }
+  h1 { font-size: 1.5rem; margin: 4px 0 2px; text-align: center; }
+  .sub { text-align: center; color: var(--muted); font-size: .85rem; margin-bottom: 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; margin: 8px 0; }
+  button, select {
+    font: inherit; font-size: .9rem; padding: 7px 12px; border-radius: 8px;
+    border: 1px solid #ccc; background: var(--panel); color: var(--text); cursor: pointer;
+  }
+  button:hover { border-color: #999; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.big { font-size: 1rem; padding: 10px 16px; }
+  .status { display: flex; justify-content: space-between; font-size: .9rem; color: var(--muted); margin: 6px 2px; }
+  #board {
+    display: grid; width: 100%; aspect-ratio: 1; border: 3px solid var(--line);
+    border-radius: 6px; overflow: hidden; touch-action: none; user-select: none; background: var(--line);
+  }
+  .cell {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border: 0 solid var(--line);
+    min-width: 0; min-height: 0; overflow: hidden;
+  }
+  .cell .m { pointer-events: none; line-height: 1; }
+  .cell.x .m { color: rgba(0,0,0,.45); font-weight: 700; }
+  .cell.dog .m { filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+  .cell.bad::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(45deg, rgba(226,59,59,.35) 0 6px, transparent 6px 12px);
+  }
+  .cell.sel::before {
+    content: ""; position: absolute; inset: 2px; border: 3px solid var(--sel); border-radius: 4px; pointer-events: none; z-index: 2;
+  }
+  .cell.hl { box-shadow: inset 0 0 0 3px #1e6fd9; }
+  .cell.tg { box-shadow: inset 0 0 0 3px #e07a3f; }
+  .cell .m.ghost { color: #e07a3f; opacity: .75; }
+  #hintBox {
+    display: none; background: #fff8e6; border: 2px solid #f0c060; border-radius: 10px;
+    padding: 10px 14px; margin: 8px 0; font-size: .92rem; line-height: 1.6;
+  }
+  #hintBox .legend { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+  #hintBox .bar { justify-content: flex-start; margin: 8px 0 0; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; font-size: .88rem; margin: 10px 0; }
+  .opts label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .help { background: var(--panel); border-radius: 10px; padding: 12px 16px; font-size: .85rem; line-height: 1.6; margin-top: 14px; }
+  .help h3 { margin: 0 0 4px; font-size: .95rem; }
+  .help ul { margin: 4px 0 8px; padding-left: 20px; }
+  kbd { background: #eee; border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: .8rem; }
+  #win {
+    display: none; text-align: center; background: #e9f7ea; border: 2px solid #5bb85f; color: #24692a;
+    border-radius: 10px; padding: 10px; margin: 8px 0; font-weight: 600;
+  }
+  #loading { text-align: center; color: var(--muted); font-size: .85rem; height: 1.2em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🐶 Puppydoku 皇后謎題</h1>
+  <div class="sub">每行、每列、每個顏色區域各放 1 隻小狗，且小狗之間不能相鄰（含斜角）</div>
+
+  <div class="bar">
+    <label>尺寸
+      <select id="size">
+        <option value="5">5 × 5</option>
+        <option value="6">6 × 6</option>
+        <option value="7">7 × 7</option>
+        <option value="8" selected>8 × 8</option>
+        <option value="9">9 × 9</option>
+        <option value="10">10 × 10</option>
+        <option value="11">11 × 11</option>
+      </select>
+    </label>
+    <button class="primary" id="newBtn">🎲 新題目</button>
+    <button id="resetBtn">↺ 重來</button>
+    <button id="undoBtn">↶ 復原</button>
+    <button id="hintBtn">💡 提示</button>
+  </div>
+  <div id="loading"></div>
+
+  <div class="status"><span id="info"></span><span id="timer">00:00</span></div>
+  <div id="board"></div>
+  <div id="win"></div>
+  <div id="hintBox">
+    <div id="hintText"></div>
+    <div class="legend"><span style="color:#1e6fd9">藍框</span>＝推理依據的格子　<span style="color:#e07a3f">橘框</span>＝結論（可以放小狗 / 標 ✖ 的格子）</div>
+    <div class="bar">
+      <button class="primary" id="hintApply">套用這個提示</button>
+      <button id="hintClose">關閉</button>
+    </div>
+  </div>
+
+  <div class="bar">
+    <button class="big primary" id="exclBtn">✖ 排除選取小狗周圍 <kbd>E</kbd></button>
+    <button class="big" id="exclAllBtn">✖ 全部小狗排除 <kbd>A</kbd></button>
+  </div>
+
+  <div class="opts">
+    <label><input type="checkbox" id="optRegion" checked> 排除時也標記同色區域</label>
+    <label><input type="checkbox" id="optAuto"> 放小狗時自動排除</label>
+    <label><input type="checkbox" id="optConflict" checked> 顯示衝突</label>
+  </div>
+
+  <div class="help">
+    <h3>操作方式</h3>
+    <ul>
+      <li>點一下格子：空白 → ✖ → 🐶 → 空白</li>
+      <li>按住拖曳：把經過的空白格都標成 ✖</li>
+      <li>右鍵（或長按）：直接放 / 移除小狗</li>
+      <li>選取一隻小狗後按 <kbd>E</kbd> 或「排除」按鈕：同一橫列、同一直行、周圍 8 格（可選同色區域）全部標成 ✖</li>
+      <li>紅色斜線：小狗互相衝突，或某橫列／直行／顏色區域已全被 ✖ 而沒有小狗（死路，代表前面有小狗放錯）</li>
+      <li>💡 提示：依目前盤面寫出「下一步推理」，藍框是依據、橘框是結論，可按「套用」自動標上</li>
+      <li>鍵盤：方向鍵移動、<kbd>Space</kbd> 切換、<kbd>D</kbd> 小狗、<kbd>X</kbd> 叉叉、<kbd>E</kbd> 排除、<kbd>A</kbd> 全部排除、<kbd>Ctrl+Z</kbd> 復原</li>
+    </ul>
+    <h3>規則</h3>
+    <ul>
+      <li>小狗周圍 8 格（上下左右 + 斜角）不能有其他小狗</li>
+      <li>每一橫列剛好 1 隻、每一直行剛好 1 隻</li>
+      <li>每個顏色區域剛好 1 隻</li>
+    </ul>
+    每道題目都由程式自動產生並驗證「唯一解」。
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const COLORS = [
+  '#f4a6a6', '#f9cf8f', '#f6ec92', '#b9e3a1', '#9fd8d3',
+  '#a9c7f2', '#c9b3ec', '#f2b8da', '#d9c2a7', '#c8d0d8',
+  '#e9a56f',
+];
+
+// ---------- 出題 ----------
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// 隨機產生合法解：每列一個、每行一個、相鄰兩列的欄位差 > 1
+function randomSolution(n) {
+  const sol = new Array(n), used = new Array(n).fill(false);
+  function bt(r) {
+    if (r === n) return true;
+    for (const c of shuffle([...Array(n).keys()])) {
+      if (used[c] || (r > 0 && Math.abs(sol[r - 1] - c) <= 1)) continue;
+      used[c] = true; sol[r] = c;
+      if (bt(r + 1)) return true;
+      used[c] = false;
+    }
+    return false;
+  }
+  bt(0);
+  return sol;
+}
+
+const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// 以解的每隻狗為種子，隨機長出區域
+function growRegions(n, sol) {
+  const reg = Array.from({ length: n }, () => new Array(n).fill(-1));
+  const cells = Array.from({ length: n }, () => []);
+  for (let r = 0; r < n; r++) { reg[r][sol[r]] = r; cells[r].push([r, sol[r]]); }
+  let left = n * n - n;
+  // 每個區域的「成長力」不同，讓大小有變化
+  const weight = Array.from({ length: n }, () => 0.3 + Math.random() * 1.7);
+  while (left > 0) {
+    let total = 0;
+    const cand = [];
+    for (let k = 0; k < n; k++) {
+      const front = [];
+      for (const [r, c] of cells[k]) for (const [dr, dc] of DIRS4) {
+        const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < n && cc >= 0 && cc < n && reg[rr][cc] === -1) front.push([rr, cc]);
+      }
+      if (front.length) { cand.push([k, front]); total += weight[k]; }
+    }
+    let x = Math.random() * total, pick = cand[cand.length - 1];
+    for (const it of cand) { x -= weight[it[0]]; if (x <= 0) { pick = it; break; } }
+    const [k, front] = pick;
+    const [r, c] = front[Math.floor(Math.random() * front.length)];
+    reg[r][c] = k; cells[k].push([r, c]); left--;
+  }
+  return reg;
+}
+
+// 解題器：最多找 limit 組解
+function solve(reg, n, limit) {
+  const sols = [], sol = new Array(n);
+  let colMask = 0, regMask = 0;
+  // sufCols[g][r]：區域 g 在第 r 列以下（含）出現的欄位遮罩，用於剪枝
+  const sufCols = Array.from({ length: n }, () => new Array(n + 1).fill(0));
+  for (let r = n - 1; r >= 0; r--) {
+    for (let g = 0; g < n; g++) sufCols[g][r] = sufCols[g][r + 1];
+    for (let c = 0; c < n; c++) sufCols[reg[r][c]][r] |= 1 << c;
+  }
+  function bt(r) {
+    if (sols.length >= limit) return;
+    if (r === n) { sols.push(sol.slice()); return; }
+    // 每個尚未放狗的區域，在剩下的列與未用的欄中必須還有位置
+    for (let g = 0; g < n; g++)
+      if (!(regMask & (1 << g)) && !(sufCols[g][r] & ~colMask)) return;
+    for (let c = 0; c < n; c++) {
+      const g = reg[r][c];
+      if (colMask & (1 << c) || regMask & (1 << g)) continue;
+      if (r > 0 && Math.abs(sol[r - 1] - c) <= 1) continue;
+      sol[r] = c; colMask |= 1 << c; regMask |= 1 << g;
+      bt(r + 1);
+      colMask &= ~(1 << c); regMask &= ~(1 << g);
+      if (sols.length >= limit) return;
+    }
+  }
+  bt(0);
+  return sols;
+}
+
+function regionConnectedWithout(reg, n, k, skipR, skipC) {
+  let start = null, count = 0;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (reg[r][c] === k && !(r === skipR && c === skipC)) { count++; if (!start) start = [r, c]; }
+  if (!start) return false;
+  const seen = new Set([start[0] * n + start[1]]), stack = [start];
+  while (stack.length) {
+    const [r, c] = stack.pop();
+    for (const [dr, dc] of DIRS4) {
+      const rr = r + dr, cc = c + dc, key = rr * n + cc;
+      if (rr < 0 || rr >= n || cc < 0 || cc >= n || seen.has(key)) continue;
+      if (rr === skipR && cc === skipC) continue;
+      if (reg[rr][cc] !== k) continue;
+      seen.add(key); stack.push([rr, cc]);
+    }
+  }
+  return seen.size === count;
+}
+
+// 若有多解：把「別的解」用到的格子改分給鄰近區域，破壞那組解，反覆直到唯一
+function generatePuzzle(n) {
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const sol = randomSolution(n);
+    const reg = growRegions(n, sol);
+    let ok = false;
+    for (let iter = 0; iter < 300; iter++) {
+      const sols = solve(reg, n, 2);
+      const alt = sols.find(s => s.some((c, r) => c !== sol[r]));
+      if (!alt) { ok = true; break; }
+      const moves = [];
+      for (let r = 0; r < n; r++) {
+        if (alt[r] === sol[r]) continue;
+        const c = alt[r], k = reg[r][c];
+        for (const [dr, dc] of DIRS4) {
+          const rr = r + dr, cc = c + dc;
+          if (rr < 0 || rr >= n || cc < 0 || cc >= n) continue;
+          const k2 = reg[rr][cc];
+          if (k2 !== k) moves.push([r, c, k, k2]);
+        }
+      }
+      shuffle(moves);
+      const mv = moves.find(([r, c, k]) => regionConnectedWithout(reg, n, k, r, c));
+      if (!mv) break;
+      reg[mv[0]][mv[1]] = mv[3];
+    }
+    if (ok) {
+      // 打亂顏色對應
+      const perm = shuffle([...Array(n).keys()]);
+      return { n, sol, reg: reg.map(row => row.map(k => perm[k])) };
+    }
+  }
+  return null;
+}
+
+// ---------- 遊戲狀態 ----------
+const EMPTY = 0, X = 1, DOG = 2;
+let P = null;           // puzzle
+let marks = [];         // n x n
+let history = [];
+let sel = null;         // [r,c]
+let startTime = 0, timerId = null, solved = false;
+
+const $ = id => document.getElementById(id);
+const boardEl = $('board');
+let cellEls = [];
+
+function newGame() {
+  const n = +$('size').value;
+  $('loading').textContent = '出題中…';
+  setTimeout(() => {
+    const p = generatePuzzle(n);
+    $('loading').textContent = p ? '' : '出題失敗，請再試一次';
+    if (!p) return;
+    P = p;
+    marks = Array.from({ length: n }, () => new Array(n).fill(EMPTY));
+    history = []; sel = null; solved = false; clearHint();
+    buildBoard(); startTimer(); render();
+  }, 20);
+}
+
+function buildBoard() {
+  const { n, reg } = P;
+  boardEl.innerHTML = '';
+  boardEl.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+  boardEl.style.gridTemplateRows = `repeat(${n}, minmax(0, 1fr))`;
+  boardEl.style.gap = '0';
+  cellEls = [];
+  const fs = Math.max(14, Math.floor(Math.min(boardEl.clientWidth || 480, 520) / n * 0.55));
+  for (let r = 0; r < n; r++) {
+    const row = [];
+    for (let c = 0; c < n; c++) {
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.dataset.r = r; el.dataset.c = c;
+      el.style.background = COLORS[reg[r][c]];
+      // 不同區域之間：兩側各 2px 深色粗線；同區域內：只畫右/下 1px 淡線
+      const diff = (rr, cc) => rr >= 0 && rr < n && cc >= 0 && cc < n && reg[rr][cc] !== reg[r][c];
+      const THICK = '2px solid #2b2b2b', THIN = '1px solid rgba(0,0,0,.18)';
+      el.style.borderTop = diff(r - 1, c) ? THICK : 'none';
+      el.style.borderLeft = diff(r, c - 1) ? THICK : 'none';
+      el.style.borderBottom = diff(r + 1, c) ? THICK : (r < n - 1 ? THIN : 'none');
+      el.style.borderRight = diff(r, c + 1) ? THICK : (c < n - 1 ? THIN : 'none');
+      el.style.fontSize = fs + 'px';
+      const m = document.createElement('span'); m.className = 'm';
+      el.appendChild(m);
+      boardEl.appendChild(el);
+      row.push(el);
+    }
+    cellEls.push(row);
+  }
+  $('info').textContent = `${n} × ${n}`;
+}
+
+function conflicts() {
+  const { n, reg } = P;
+  const dogs = [];
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (marks[r][c] === DOG) dogs.push([r, c]);
+  const bad = new Set();
+  for (let i = 0; i < dogs.length; i++) for (let j = i + 1; j < dogs.length; j++) {
+    const [r1, c1] = dogs[i], [r2, c2] = dogs[j];
+    if (r1 === r2 || c1 === c2 || reg[r1][c1] === reg[r2][c2] ||
+        (Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1)) {
+      bad.add(r1 * n + c1); bad.add(r2 * n + c2);
+    }
+  }
+  // 死路：某橫列 / 直行 / 顏色區域已沒有小狗、也沒有空格可放 → 整組標紅
+  const groups = [];
+  for (let i = 0; i < n; i++) groups.push([], [], []);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    groups[r * 3].push([r, c]); groups[c * 3 + 1].push([r, c]); groups[reg[r][c] * 3 + 2].push([r, c]);
+  }
+  for (const cells of groups)
+    if (cells.every(([r, c]) => marks[r][c] === X))
+      for (const [r, c] of cells) bad.add(r * n + c);
+  return { dogs, bad };
+}
+
+function render() {
+  if (!P) return;
+  const { n } = P;
+  const { dogs, bad } = conflicts();
+  const showBad = $('optConflict').checked;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const el = cellEls[r][c], v = marks[r][c];
+    el.classList.toggle('x', v === X);
+    el.classList.toggle('dog', v === DOG);
+    el.classList.toggle('bad', showBad && bad.has(r * n + c));
+    el.classList.toggle('sel', !!sel && sel[0] === r && sel[1] === c);
+    const key = r * n + c, ghost = curHint && v === EMPTY && curHint.tg.get(key);
+    el.classList.toggle('hl', !!curHint && curHint.hl.has(key));
+    el.classList.toggle('tg', !!curHint && curHint.tg.has(key));
+    el.firstChild.classList.toggle('ghost', !!ghost);
+    el.firstChild.textContent = v === DOG ? '🐶' : v === X ? '✕' : ghost === DOG ? '🐶' : ghost === X ? '✕' : '';
+  }
+  $('info').textContent = `${n} × ${n}　🐶 ${dogs.length} / ${n}`;
+  if (!solved && dogs.length === n && bad.size === 0) {
+    solved = true; stopTimer();
+    $('win').style.display = 'block';
+    $('win').textContent = `🎉 完成！用時 ${$('timer').textContent}`;
+  }
+  if (!solved) $('win').style.display = 'none';
+}
+
+function snapshot() {
+  clearHint();
+  history.push(marks.map(r => r.slice()));
+  if (history.length > 500) history.shift();
+}
+function undo() {
+  if (!history.length || solved) return;
+  clearHint(); marks = history.pop(); render();
+}
+
+function setDog(r, c) {
+  marks[r][c] = DOG;
+  if ($('optAuto').checked) excludeAround(r, c);
+}
+
+function cycle(r, c) {
+  if (solved) return;
+  snapshot();
+  const v = marks[r][c];
+  if (v === EMPTY) marks[r][c] = X;
+  else if (v === X) setDog(r, c);
+  else marks[r][c] = EMPTY;
+  sel = [r, c]; render();
+}
+
+function toggleDog(r, c) {
+  if (solved) return;
+  snapshot();
+  if (marks[r][c] === DOG) marks[r][c] = EMPTY; else setDog(r, c);
+  sel = [r, c]; render();
+}
+
+function toggleX(r, c) {
+  if (solved) return;
+  snapshot();
+  marks[r][c] = marks[r][c] === X ? EMPTY : X;
+  sel = [r, c]; render();
+}
+
+// 核心功能：將小狗所在橫列、直行、周圍 8 格（及同色區域）的空格標為 ✕
+function excludeAround(r, c) {
+  const { n, reg } = P;
+  const withRegion = $('optRegion').checked;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    if (i === r && j === c) continue;
+    const hit = i === r || j === c || (Math.abs(i - r) <= 1 && Math.abs(j - c) <= 1) ||
+                (withRegion && reg[i][j] === reg[r][c]);
+    if (hit && marks[i][j] === EMPTY) marks[i][j] = X;
+  }
+}
+
+function excludeSelected() {
+  if (!P || solved) return;
+  if (!sel || marks[sel[0]][sel[1]] !== DOG) {
+    flash('請先選取一隻小狗'); return;
+  }
+  snapshot(); excludeAround(sel[0], sel[1]); render();
+}
+
+function excludeAll() {
+  if (!P || solved) return;
+  const { n } = P;
+  snapshot();
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (marks[r][c] === DOG) excludeAround(r, c);
+  render();
+}
+
+// ---------- 推理提示 ----------
+const COLOR_NAMES = ['紅', '淺橘', '黃', '綠', '青', '藍', '紫', '粉紅', '棕', '灰', '深橘'];
+let curHint = null; // { text, hl:Set, tg:Map(key→DOG|X|EMPTY), apply:[[r,c,v]] }
+
+function groupsOf(n, reg) {
+  const gs = [];
+  for (let i = 0; i < n; i++) gs.push({ type: 'row', idx: i, cells: [] });
+  for (let i = 0; i < n; i++) gs.push({ type: 'col', idx: i, cells: [] });
+  for (let i = 0; i < n; i++) gs.push({ type: 'reg', idx: i, cells: [] });
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    gs[r].cells.push([r, c]); gs[n + c].cells.push([r, c]); gs[2 * n + reg[r][c]].cells.push([r, c]);
+  }
+  return gs;
+}
+const TYPE_WORD = { row: '橫列', col: '直行', reg: '顏色區域' };
+function gName(g) {
+  return g.type === 'row' ? `第 ${g.idx + 1} 橫列` : g.type === 'col' ? `第 ${g.idx + 1} 直行` : `${COLOR_NAMES[g.idx]}色區域`;
+}
+const cName = ([r, c]) => `第 ${r + 1} 橫列第 ${c + 1} 直行`;
+// 小狗在 a 時，b 是否被排除
+function hits(reg, a, b) {
+  return a[0] === b[0] || a[1] === b[1] || reg[a[0]][a[1]] === reg[b[0]][b[1]] ||
+         (Math.abs(a[0] - b[0]) <= 1 && Math.abs(a[1] - b[1]) <= 1);
+}
+const lineOf = (type, [r, c], reg) => type === 'row' ? r : type === 'col' ? c : reg[r][c];
+
+function makeHint(text, hl, dogs = [], xs = [], clears = []) {
+  const { n } = P, h = { text, hl: new Set(), tg: new Map(), apply: [] };
+  for (const [r, c] of hl) h.hl.add(r * n + c);
+  for (const [r, c] of dogs) { h.tg.set(r * n + c, DOG); h.apply.push([r, c, DOG]); }
+  for (const [r, c] of xs) { h.tg.set(r * n + c, X); h.apply.push([r, c, X]); }
+  for (const [r, c] of clears) { h.tg.set(r * n + c, EMPTY); h.apply.push([r, c, EMPTY]); }
+  return h;
+}
+
+// 在 st 上放一隻小狗並排除所有被它影響的空格
+function placeOn(st, reg, n, p) {
+  st[p[0]][p[1]] = DOG;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (st[r][c] === EMPTY && hits(reg, p, [r, c])) st[r][c] = X;
+}
+
+function findHint() {
+  const { n, reg, sol } = P;
+  const gs = groupsOf(n, reg);
+
+  // 1) 先檢查錯誤
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (marks[r][c] === DOG && sol[r] !== c)
+      return makeHint(`${cName([r, c])} 的小狗放錯了，照這樣下去最後一定會有某個橫列 / 直行 / 顏色區域放不下小狗。建議先把它移除（也檢查一下因它而標的 ✖）。`, [], [], [], [[r, c]]);
+  }
+  for (let r = 0; r < n; r++) if (marks[r][sol[r]] === X)
+    return makeHint(`${cName([r, sol[r]])} 被標了 ✖，但目前的線索還不能排除這一格，這個 ✖ 標錯了。`, [], [], [], [[r, sol[r]]]);
+
+  // 2) 已放的小狗還沒排除完
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (marks[r][c] !== DOG) continue;
+    const xs = [];
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++)
+      if (marks[i][j] === EMPTY && hits(reg, [r, c], [i, j])) xs.push([i, j]);
+    if (xs.length)
+      return makeHint(`${cName([r, c])} 已經有小狗了，所以同一橫列、同一直行、周圍 8 格，以及同一個${COLOR_NAMES[reg[r][c]]}色區域，都不可能再有小狗（可以直接按 E 排除）。`, [[r, c]], [], xs);
+  }
+
+  const st = marks.map(row => row.slice());
+  const cands = g => g.cells.filter(([r, c]) => st[r][c] === EMPTY);
+  const open = gs.filter(g => !g.cells.some(([r, c]) => st[r][c] === DOG));
+
+  // 3) 某組只剩一格
+  for (const t of ['reg', 'row', 'col']) for (const g of open.filter(g => g.type === t)) {
+    const cs = cands(g);
+    if (cs.length === 1)
+      return makeHint(`${gName(g)} 只剩下 ${cName(cs[0])} 這一格還能放小狗，所以這格一定是小狗。`, g.cells, cs);
+  }
+
+  // 4) 某組的所有可能位置都會排除的格子
+  const commons = [];
+  for (const g of open) {
+    const cs = cands(g);
+    const inG = new Set(g.cells.map(([r, c]) => r * n + c));
+    const xs = [];
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+      if (st[r][c] === EMPTY && !inG.has(r * n + c) && cs.every(p => hits(reg, p, [r, c]))) xs.push([r, c]);
+    if (xs.length) commons.push({ g, cs, xs });
+  }
+  if (commons.length) {
+    commons.sort((a, b) => a.cs.length - b.cs.length || b.xs.length - a.xs.length);
+    const { g, cs, xs } = commons[0];
+    let why = '';
+    for (const t of ['row', 'col', 'reg']) {
+      if (t === g.type) continue;
+      const lines = new Set(cs.map(p => lineOf(t, p, reg)));
+      if (lines.size !== 1) continue;
+      const line = { type: t, idx: [...lines][0] };
+      if (xs.every(p => lineOf(t, p, reg) === line.idx)) {
+        why = `${gName(g)} 剩下的 ${cs.length} 個可能位置（藍框）全都在${gName(line)}裡，所以${gName(line)}的那一隻小狗一定屬於${gName(g)}。因此${gName(line)}中其他（橘框）的格子都不可能有小狗。`;
+        break;
+      }
+    }
+    if (!why) {
+      why = cs.length === 2
+        ? `${gName(g)} 的小狗只能在 ${cName(cs[0])} 或 ${cName(cs[1])}（藍框）。不論是哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`
+        : `${gName(g)} 的小狗只能在藍框的 ${cs.length} 格之一。不論放在哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`;
+    }
+    return makeHint(why, cs, [], xs);
+  }
+
+  // 5) k 個組被限制在 k 條線內（例如兩個顏色區域只出現在相同的兩個橫列）
+  const subsetHints = [];
+  for (const A of ['reg', 'row', 'col']) for (const B of ['row', 'col', 'reg']) {
+    if (A === B) continue;
+    const U = open.filter(g => g.type === A).map(g => ({ g, lines: new Set(cands(g).map(p => lineOf(B, p, reg))) }));
+    const m = U.length;
+    for (let mask = 1; mask < (1 << m); mask++) {
+      let k = 0; const lines = new Set(), picked = [];
+      for (let i = 0; i < m; i++) if (mask & (1 << i)) { k++; picked.push(U[i]); U[i].lines.forEach(l => lines.add(l)); }
+      if (k < 2 || k >= m || lines.size !== k) continue;
+      const inPicked = new Set();
+      picked.forEach(({ g }) => g.cells.forEach(([r, c]) => inPicked.add(r * n + c)));
+      const xs = [];
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+        if (st[r][c] === EMPTY && lines.has(lineOf(B, [r, c], reg)) && !inPicked.has(r * n + c)) xs.push([r, c]);
+      if (xs.length) subsetHints.push({ A, B, k, picked, lines, xs });
+    }
+  }
+  if (subsetHints.length) {
+    subsetHints.sort((a, b) => a.k - b.k || b.xs.length - a.xs.length);
+    const { A, B, k, picked, lines, xs } = subsetHints[0];
+    const lineNames = [...lines].sort((a, b) => a - b).map(i => gName({ type: B, idx: i }));
+    const hl = picked.flatMap(({ g }) => cands(g));
+    return makeHint(`${picked.map(p => gName(p.g)).join('、')} 這 ${k} 個${TYPE_WORD[A]}的小狗，全部只能落在 ${lineNames.join('、')} 這 ${k} 個${TYPE_WORD[B]}裡（藍框）。這 ${k} 個${TYPE_WORD[B]}剛好要放 ${k} 隻小狗，已經被它們用完了，所以這些${TYPE_WORD[B]}中其他（橘框）的格子都不可能有小狗。`, hl, [], xs);
+  }
+
+  // 6) 假設法：放下去會導致某組沒有位置
+  let best = null;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (st[r][c] !== EMPTY) continue;
+    const s2 = st.map(row => row.slice());
+    placeOn(s2, reg, n, [r, c]);
+    const chain = [];
+    let fail = null;
+    for (let guard = 0; guard < n && !fail; guard++) {
+      let progressed = false;
+      for (const g of gs) {
+        if (g.cells.some(([i, j]) => s2[i][j] === DOG)) continue;
+        const cs = g.cells.filter(([i, j]) => s2[i][j] === EMPTY);
+        if (!cs.length) { fail = g; break; }
+        if (cs.length === 1) { placeOn(s2, reg, n, cs[0]); chain.push(cs[0]); progressed = true; break; }
+      }
+      if (!progressed) break;
+    }
+    if (fail && (!best || chain.length < best.chain.length)) best = { p: [r, c], chain, fail };
+  }
+  if (best) {
+    const { p, chain, fail } = best;
+    let t = `假設 ${cName(p)}（橘框）放小狗：`;
+    if (chain.length) t += `接著 ${chain.map(cName).join(' → ')} 會被迫放小狗，`;
+    t += `結果${gName(fail)}（藍框）就沒有任何格子可以放小狗了，矛盾。所以 ${cName(p)} 不可能有小狗。`;
+    return makeHint(t, fail.cells, [], [p]);
+  }
+
+  // 7) 找不到簡單推理：直接給一隻
+  const rows = [...Array(n).keys()].filter(r => marks[r][sol[r]] !== DOG);
+  if (!rows.length) return null;
+  const r = rows[0];
+  return makeHint(`目前找不到簡單的推理步驟，直接告訴你：${cName([r, sol[r]])} 是小狗。`, [], [[r, sol[r]]]);
+}
+
+function hint() {
+  if (!P || solved) return;
+  curHint = findHint();
+  if (!curHint) return;
+  $('hintText').textContent = '💡 ' + curHint.text;
+  $('hintBox').style.display = 'block';
+  render();
+}
+function clearHint() {
+  if (!curHint) return;
+  curHint = null; $('hintBox').style.display = 'none';
+}
+function applyHint() {
+  if (!curHint || solved) return;
+  const h = curHint;
+  snapshot();
+  for (const [r, c, v] of h.apply) {
+    if (v === DOG) setDog(r, c); else marks[r][c] = v;
+  }
+  render();
+}
+
+function resetBoard() {
+  if (!P) return;
+  snapshot();
+  marks = marks.map(row => row.map(() => EMPTY));
+  solved = false; sel = null; render();
+  if (!timerId) startTimer();
+}
+
+function flash(msg) {
+  $('loading').textContent = msg;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => { $('loading').textContent = ''; }, 1500);
+}
+
+// ---------- 計時 ----------
+function startTimer() {
+  stopTimer(); startTime = Date.now();
+  timerId = setInterval(tick, 500); tick();
+}
+function stopTimer() { clearInterval(timerId); timerId = null; }
+function tick() {
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  $('timer').textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// ---------- 滑鼠 / 觸控 ----------
+let drag = null; // {r,c,moved,visited:Set, longPress}
+function cellAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (!el || !el.classList.contains('cell')) return null;
+  return [+el.dataset.r, +el.dataset.c];
+}
+
+boardEl.addEventListener('contextmenu', e => e.preventDefault());
+
+boardEl.addEventListener('pointerdown', e => {
+  if (!P || solved) return;
+  const pos = cellAt(e.clientX, e.clientY);
+  if (!pos) return;
+  boardEl.setPointerCapture(e.pointerId);
+  if (e.button === 2) { toggleDog(pos[0], pos[1]); return; }
+  drag = { r: pos[0], c: pos[1], moved: false, visited: new Set(), lp: null };
+  drag.lp = setTimeout(() => {
+    if (drag && !drag.moved) { toggleDog(drag.r, drag.c); drag = null; }
+  }, 450);
+});
+
+boardEl.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const pos = cellAt(e.clientX, e.clientY);
+  if (!pos) return;
+  const { n } = P;
+  if (!drag.moved && (pos[0] !== drag.r || pos[1] !== drag.c)) {
+    drag.moved = true; clearTimeout(drag.lp);
+    snapshot();
+    if (marks[drag.r][drag.c] === EMPTY) marks[drag.r][drag.c] = X;
+    drag.visited.add(drag.r * n + drag.c);
+  }
+  if (drag.moved) {
+    const key = pos[0] * n + pos[1];
+    if (!drag.visited.has(key)) {
+      drag.visited.add(key);
+      if (marks[pos[0]][pos[1]] === EMPTY) marks[pos[0]][pos[1]] = X;
+      sel = pos; render();
+    }
+  }
+});
+
+function endDrag() {
+  if (!drag) return;
+  clearTimeout(drag.lp);
+  if (!drag.moved) cycle(drag.r, drag.c); else render();
+  drag = null;
+}
+boardEl.addEventListener('pointerup', endDrag);
+boardEl.addEventListener('pointercancel', () => { if (drag) clearTimeout(drag.lp); drag = null; });
+
+// ---------- 鍵盤 ----------
+document.addEventListener('keydown', e => {
+  if (!P) return;
+  if (e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); undo(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const { n } = P;
+  const mv = { arrowup: [-1, 0], arrowdown: [1, 0], arrowleft: [0, -1], arrowright: [0, 1] }[k];
+  if (mv) {
+    e.preventDefault();
+    if (!sel) sel = [0, 0];
+    else sel = [Math.min(n - 1, Math.max(0, sel[0] + mv[0])), Math.min(n - 1, Math.max(0, sel[1] + mv[1]))];
+    render(); return;
+  }
+  if (k === 'e') { excludeSelected(); return; }
+  if (k === 'a') { excludeAll(); return; }
+  if (!sel) return;
+  if (k === ' ' || k === 'enter') { e.preventDefault(); cycle(sel[0], sel[1]); }
+  else if (k === 'd' || k === 'q') toggleDog(sel[0], sel[1]);
+  else if (k === 'x') toggleX(sel[0], sel[1]);
+  else if (k === 'backspace' || k === 'delete') { snapshot(); marks[sel[0]][sel[1]] = EMPTY; render(); }
+});
+
+$('newBtn').onclick = newGame;
+$('size').onchange = newGame;
+$('resetBtn').onclick = resetBoard;
+$('undoBtn').onclick = undo;
+$('hintBtn').onclick = hint;
+$('hintApply').onclick = applyHint;
+$('hintClose').onclick = () => { clearHint(); render(); };
+$('exclBtn').onclick = excludeSelected;
+$('exclAllBtn').onclick = excludeAll;
+$('optConflict').onchange = render;
+
+newGame();
+</script>
+</body>
+</html>
