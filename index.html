@@ -4,6 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Puppydoku 皇后謎題</title>
+<script>
+  // GoatCounter 訪客統計（只在 GitHub Pages 上啟用；本機開啟不統計）
+  const GOATCOUNTER = 'digitalgenius';
+  if (location.hostname.endsWith('github.io')) {
+    const sc = document.createElement('script');
+    sc.async = true;
+    sc.src = 'https://gc.zgo.at/count.js';
+    sc.dataset.goatcounter = `https://${GOATCOUNTER}.goatcounter.com/count`;
+    document.head.appendChild(sc);
+  }
+  function countEvent(name) {
+    try { if (window.goatcounter && window.goatcounter.count) window.goatcounter.count({ path: name, title: name, event: true }); } catch { /* 統計失敗不影響遊戲 */ }
+  }
+</script>
 <style>
   :root {
     --bg: #f6f3ee;
@@ -315,6 +329,7 @@ function newGame() {
     marks = Array.from({ length: n }, () => new Array(n).fill(EMPTY));
     history = []; sel = null; solved = false; clearHint();
     buildBoard(); startTimer(); render();
+    countEvent(`puppydoku-new-${n}x${n}`);
   }, 20);
 }
 
@@ -395,6 +410,7 @@ function render() {
   $('info').textContent = `${n} × ${n}　🐶 ${dogs.length} / ${n}`;
   if (!solved && dogs.length === n && bad.size === 0) {
     solved = true; stopTimer();
+    countEvent(`puppydoku-solved-${n}x${n}`);
     $('win').style.display = 'block';
     $('win').textContent = `🎉 完成！用時 ${$('timer').textContent}`;
   }

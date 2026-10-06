@@ -1,6 +1,12 @@
 # 🐶 Puppydoku 皇后謎題
 
-網頁版的 Puppydoku 謎題，融合數獨與「八皇后問題」的邏輯。直接用瀏覽器開啟 `index.html` 即可遊玩，不需安裝任何東西。
+網頁版的 Puppydoku 謎題，融合數獨與「八皇后問題」的邏輯。
+
+**線上遊玩：https://jeffcc.github.io/puppydoku/**
+
+也可以直接用瀏覽器開啟 `index.html`，不需安裝任何東西。
+
+訪客統計使用 GoatCounter（只在 GitHub Pages 上啟用），代碼設定在 `index.html` 開頭的 `GOATCOUNTER`。
 
 ## 規則
 
