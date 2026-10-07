@@ -110,6 +110,7 @@
     <button id="resetBtn">↺ 重來</button>
     <button id="undoBtn">↶ 復原</button>
     <button id="hintBtn">💡 提示</button>
+    <button id="hintV2Btn">💡 提示v2</button>
   </div>
   <div id="loading"></div>
 
@@ -120,6 +121,7 @@
     <div id="hintText"></div>
     <div class="legend"><span style="color:#1e6fd9">藍框</span>＝推理依據的格子　<span style="color:#e07a3f">橘框</span>＝結論（可以放小狗 / 標 ✖ 的格子）</div>
     <div class="bar">
+      <button class="primary" id="hintMore">再多提示一點</button>
       <button class="primary" id="hintApply">套用這個提示</button>
       <button id="hintClose">關閉</button>
     </div>
@@ -486,6 +488,8 @@ function excludeAll() {
 
 // ---------- 推理提示 ----------
 const COLOR_NAMES = ['紅', '淺橘', '黃', '綠', '青', '藍', '紫', '粉紅', '棕', '灰', '深橘'];
+let hk = {};          // findHint 用來標記提示種類
+let hintStages = [], hintLevel = 0; // 提示 v2：分段提示
 let curHint = null; // { text, hl:Set, tg:Map(key→DOG|X|EMPTY), apply:[[r,c,v]] }
 
 function groupsOf(n, reg) {
@@ -516,6 +520,7 @@ function makeHint(text, hl, dogs = [], xs = [], clears = []) {
   for (const [r, c] of dogs) { h.tg.set(r * n + c, DOG); h.apply.push([r, c, DOG]); }
   for (const [r, c] of xs) { h.tg.set(r * n + c, X); h.apply.push([r, c, X]); }
   for (const [r, c] of clears) { h.tg.set(r * n + c, EMPTY); h.apply.push([r, c, EMPTY]); }
+  Object.assign(h, hk); hk = {};
   return h;
 }
 
@@ -533,10 +538,10 @@ function findHint() {
   // 1) 先檢查錯誤
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     if (marks[r][c] === DOG && sol[r] !== c)
-      return makeHint(`${cName([r, c])} 的小狗放錯了，照這樣下去最後一定會有某個橫列 / 直行 / 顏色區域放不下小狗。建議先把它移除（也檢查一下因它而標的 ✖）。`, [], [], [], [[r, c]]);
+      return (hk = { kind: 'error' }, makeHint(`${cName([r, c])} 的小狗放錯了，照這樣下去最後一定會有某個橫列 / 直行 / 顏色區域放不下小狗。建議先把它移除（也檢查一下因它而標的 ✖）。`, [], [], [], [[r, c]]));
   }
   for (let r = 0; r < n; r++) if (marks[r][sol[r]] === X)
-    return makeHint(`${cName([r, sol[r]])} 被標了 ✖，但目前的線索還不能排除這一格，這個 ✖ 標錯了。`, [], [], [], [[r, sol[r]]]);
+    return (hk = { kind: 'error' }, makeHint(`${cName([r, sol[r]])} 被標了 ✖，但目前的線索還不能排除這一格，這個 ✖ 標錯了。`, [], [], [], [[r, sol[r]]]));
 
   // 2) 已放的小狗還沒排除完
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
@@ -545,7 +550,7 @@ function findHint() {
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++)
       if (marks[i][j] === EMPTY && hits(reg, [r, c], [i, j])) xs.push([i, j]);
     if (xs.length)
-      return makeHint(`${cName([r, c])} 已經有小狗了，所以同一橫列、同一直行、周圍 8 格，以及同一個${COLOR_NAMES[reg[r][c]]}色區域，都不可能再有小狗（可以直接按 E 排除）。`, [[r, c]], [], xs);
+      return (hk = { kind: 'pending', dog: [r, c] }, makeHint(`${cName([r, c])} 已經有小狗了，所以同一橫列、同一直行、周圍 8 格，以及同一個${COLOR_NAMES[reg[r][c]]}色區域，都不可能再有小狗（可以直接按 E 排除）。`, [[r, c]], [], xs));
   }
 
   const st = marks.map(row => row.slice());
@@ -556,7 +561,7 @@ function findHint() {
   for (const t of ['reg', 'row', 'col']) for (const g of open.filter(g => g.type === t)) {
     const cs = cands(g);
     if (cs.length === 1)
-      return makeHint(`${gName(g)} 只剩下 ${cName(cs[0])} 這一格還能放小狗，所以這格一定是小狗。`, g.cells, cs);
+      return (hk = { kind: 'single', group: g }, makeHint(`${gName(g)} 只剩下 ${cName(cs[0])} 這一格還能放小狗，所以這格一定是小狗。`, g.cells, cs));
   }
 
   // 4) 某組的所有可能位置都會排除的格子
@@ -588,7 +593,7 @@ function findHint() {
         ? `${gName(g)} 的小狗只能在 ${cName(cs[0])} 或 ${cName(cs[1])}（藍框）。不論是哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`
         : `${gName(g)} 的小狗只能在藍框的 ${cs.length} 格之一。不論放在哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`;
     }
-    return makeHint(why, cs, [], xs);
+    return (hk = { kind: 'common' }, makeHint(why, cs, [], xs));
   }
 
   // 5) k 個組被限制在 k 條線內（例如兩個顏色區域只出現在相同的兩個橫列）
@@ -614,7 +619,7 @@ function findHint() {
     const { A, B, k, picked, lines, xs } = subsetHints[0];
     const lineNames = [...lines].sort((a, b) => a - b).map(i => gName({ type: B, idx: i }));
     const hl = picked.flatMap(({ g }) => cands(g));
-    return makeHint(`${picked.map(p => gName(p.g)).join('、')} 這 ${k} 個${TYPE_WORD[A]}的小狗，全部只能落在 ${lineNames.join('、')} 這 ${k} 個${TYPE_WORD[B]}裡（藍框）。這 ${k} 個${TYPE_WORD[B]}剛好要放 ${k} 隻小狗，已經被它們用完了，所以這些${TYPE_WORD[B]}中其他（橘框）的格子都不可能有小狗。`, hl, [], xs);
+    return (hk = { kind: 'subset' }, makeHint(`${picked.map(p => gName(p.g)).join('、')} 這 ${k} 個${TYPE_WORD[A]}的小狗，全部只能落在 ${lineNames.join('、')} 這 ${k} 個${TYPE_WORD[B]}裡（藍框）。這 ${k} 個${TYPE_WORD[B]}剛好要放 ${k} 隻小狗，已經被它們用完了，所以這些${TYPE_WORD[B]}中其他（橘框）的格子都不可能有小狗。`, hl, [], xs));
   }
 
   // 6) 假設法：放下去會導致某組沒有位置
@@ -642,23 +647,59 @@ function findHint() {
     let t = `假設 ${cName(p)}（橘框）放小狗：`;
     if (chain.length) t += `接著 ${chain.map(cName).join(' → ')} 會被迫放小狗，`;
     t += `結果${gName(fail)}（藍框）就沒有任何格子可以放小狗了，矛盾。所以 ${cName(p)} 不可能有小狗。`;
-    return makeHint(t, fail.cells, [], [p]);
+    return (hk = { kind: 'assume' }, makeHint(t, fail.cells, [], [p]));
   }
 
   // 7) 找不到簡單推理：直接給一隻
   const rows = [...Array(n).keys()].filter(r => marks[r][sol[r]] !== DOG);
   if (!rows.length) return null;
   const r = rows[0];
-  return makeHint(`目前找不到簡單的推理步驟，直接告訴你：${cName([r, sol[r]])} 是小狗。`, [], [[r, sol[r]]]);
+  return (hk = { kind: 'reveal' }, makeHint(`目前找不到簡單的推理步驟，直接告訴你：${cName([r, sol[r]])} 是小狗。`, [], [[r, sol[r]]]));
 }
 
 function hint() {
   if (!P || solved) return;
-  curHint = findHint();
-  if (!curHint) return;
+  const h = findHint();
+  if (!h) return;
+  showStages([h]);
+}
+
+// 提示 v2：先給方向，讓玩家自己完成；按「再多一點」才逐步揭露
+function hintV2() {
+  if (!P || solved) return;
+  const h = findHint();
+  if (!h) return;
+  const none = { hl: new Set(), tg: new Map(), apply: [] };
+  const stages = [];
+  if (h.kind === 'single') {
+    stages.push({ ...none, text: '盤面上有一格已經可以確定是小狗了，試著找出來！（提示：哪個橫列、直行或顏色區域只剩下一格能放？）' });
+    const { n } = P, hl = new Set(h.group.cells.map(([r, c]) => r * n + c));
+    stages.push({ ...none, hl, text: `看看${gName(h.group)}（藍框），它還剩幾格可以放小狗？` });
+  } else if (h.kind === 'pending') {
+    const { n } = P;
+    stages.push({ ...none, hl: new Set([h.dog[0] * n + h.dog[1]]), text: '藍框這隻小狗周圍還有格子沒排除，想想看哪些格子不能再放小狗？' });
+  } else if (h.kind === 'common' || h.kind === 'subset' || h.kind === 'assume') {
+    stages.push({ ...none, tg: h.tg, text: '橘框的格子都可以標 ✖。想想看為什麼？' });
+  }
+  stages.push(h);
+  showStages(stages);
+}
+
+function showStages(stages) {
+  hintStages = stages; hintLevel = 0;
+  showHintLevel();
+}
+function showHintLevel() {
+  curHint = hintStages[hintLevel];
+  const last = hintLevel === hintStages.length - 1;
   $('hintText').textContent = '💡 ' + curHint.text;
+  $('hintApply').style.display = last ? '' : 'none';
+  $('hintMore').style.display = last ? 'none' : '';
   $('hintBox').style.display = 'block';
   render();
+}
+function hintMore() {
+  if (hintLevel < hintStages.length - 1) { hintLevel++; showHintLevel(); }
 }
 function clearHint() {
   if (!curHint) return;
@@ -781,6 +822,8 @@ $('resetBtn').onclick = resetBoard;
 $('undoBtn').onclick = undo;
 $('hintBtn').onclick = hint;
 $('hintApply').onclick = applyHint;
+$('hintV2Btn').onclick = hintV2;
+$('hintMore').onclick = hintMore;
 $('hintClose').onclick = () => { clearHint(); render(); };
 $('exclBtn').onclick = excludeSelected;
 $('exclAllBtn').onclick = excludeAll;
