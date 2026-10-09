@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Puppydoku 皇后謎題</title>
 <script>
   // GoatCounter 訪客統計（只在 GitHub Pages 上啟用；本機開啟不統計）
@@ -31,6 +31,8 @@
     --sel: #1e6fd9;
   }
   * { box-sizing: border-box; }
+  /* 手機：取消「連點兩下放大」，按鈕與棋盤點起來也比較即時 */
+  html, body, button, select, label { touch-action: manipulation; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
@@ -51,7 +53,22 @@
   #board {
     display: grid; width: 100%; aspect-ratio: 1; border: 3px solid var(--line);
     border-radius: 6px; overflow: hidden; touch-action: none; user-select: none; background: var(--line);
+    -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
   }
+  /* 手機標記模式：決定點一下棋盤要放 ✕ 還是 🐶（小圖示，放在狀態列旁） */
+  .status { align-items: center; }
+  .status .left { display: flex; align-items: center; gap: 10px; }
+  #modeBar { display: none; gap: 4px; }
+  body.touch #modeBar { display: inline-flex; }
+  #modeBar button {
+    width: 34px; height: 34px; padding: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 1.1rem; line-height: 1; border: 2px solid #ccc; border-radius: 7px; background: var(--panel);
+    -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+  }
+  #modeBar button.on { border-color: var(--accent); background: #fdeee4; box-shadow: inset 0 0 0 1px var(--accent); }
+  #modeBar button[data-mode="x"] { color: rgba(0,0,0,.6); font-weight: 700; }
+  .touchOnly { display: none; }
+  body.touch .touchOnly { display: list-item; }
   .cell {
     position: relative; display: flex; align-items: center; justify-content: center;
     cursor: pointer; border: 0 solid var(--line);
@@ -114,7 +131,16 @@
   </div>
   <div id="loading"></div>
 
-  <div class="status"><span id="info"></span><span id="timer">00:00</span></div>
+  <div class="status">
+    <span class="left">
+      <span id="info"></span>
+      <span id="modeBar" role="group" aria-label="點一下要標記">
+        <button type="button" data-mode="x" class="on" aria-pressed="true" aria-label="標叉叉" title="標叉叉">✕</button>
+        <button type="button" data-mode="dog" aria-pressed="false" aria-label="放小狗" title="放小狗">🐶</button>
+      </span>
+    </span>
+    <span id="timer">00:00</span>
+  </div>
   <div id="board"></div>
   <div id="win"></div>
   <div id="hintBox">
@@ -142,9 +168,11 @@
     <h3>操作方式</h3>
     <ul>
       <li>點一下格子：空白 → ✖ → 🐶 → 空白</li>
+      <li class="touchOnly">手機：先點棋盤上方的 ✕ 或 🐶 小圖示選擇標記，點一下格子就放那個標記（再點一次取消）；長按則放另一種</li>
       <li>按住拖曳：把經過的空白格都標成 ✖</li>
       <li>右鍵（或長按）：直接放 / 移除小狗</li>
       <li>選取一隻小狗後按 <kbd>E</kbd> 或「排除」按鈕：同一橫列、同一直行、周圍 8 格（可選同色區域）全部標成 ✖</li>
+      <li>放好倒數第二隻小狗後，如果盤面只剩一格空格且正是最後一隻小狗，會自動放好並完成</li>
       <li>紅色斜線：小狗互相衝突，或某橫列／直行／顏色區域已全被 ✖ 而沒有小狗（死路，代表前面有小狗放錯）</li>
       <li>💡 提示：依目前盤面寫出「下一步推理」，藍框是依據、橘框是結論，可按「套用」自動標上</li>
       <li>鍵盤：方向鍵移動、<kbd>Space</kbd> 切換、<kbd>D</kbd> 小狗、<kbd>X</kbd> 叉叉、<kbd>E</kbd> 排除、<kbd>A</kbd> 全部排除、<kbd>Ctrl+Z</kbd> 復原</li>
@@ -392,10 +420,27 @@ function conflicts() {
   return { dogs, bad };
 }
 
+// 自動完成：已放 n-1 隻小狗、沒有衝突，且盤面只剩一格空格、那格正好就是最後一隻小狗 → 直接幫忙放好
+function tryAutoFinish(dogs, bad) {
+  const { n, sol } = P;
+  if (solved || dogs.length !== n - 1 || bad.size) return false;
+  let last = null;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (marks[r][c] === EMPTY) {
+    if (last) return false;
+    last = [r, c];
+  }
+  if (!last || sol[last[0]] !== last[1]) return false;
+  marks[last[0]][last[1]] = DOG;
+  sel = last;
+  return true;
+}
+
 function render() {
   if (!P) return;
   const { n } = P;
-  const { dogs, bad } = conflicts();
+  let { dogs, bad } = conflicts();
+  const auto = tryAutoFinish(dogs, bad);
+  if (auto) ({ dogs, bad } = conflicts());
   const showBad = $('optConflict').checked;
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     const el = cellEls[r][c], v = marks[r][c];
@@ -414,7 +459,9 @@ function render() {
     solved = true; stopTimer();
     countEvent(`puppydoku-solved-${n}x${n}`);
     $('win').style.display = 'block';
-    $('win').textContent = `🎉 完成！用時 ${$('timer').textContent}`;
+    $('win').textContent = auto
+      ? `🎉 完成！只剩最後一格，已自動幫你放好小狗。用時 ${$('timer').textContent}`
+      : `🎉 完成！用時 ${$('timer').textContent}`;
   }
   if (!solved) $('win').style.display = 'none';
 }
@@ -756,9 +803,16 @@ boardEl.addEventListener('pointerdown', e => {
   if (!pos) return;
   boardEl.setPointerCapture(e.pointerId);
   if (e.button === 2) { toggleDog(pos[0], pos[1]); return; }
-  drag = { r: pos[0], c: pos[1], moved: false, visited: new Set(), lp: null };
+  const touch = e.pointerType !== 'mouse';
+  if (touch) enableTouchUI();
+  drag = { r: pos[0], c: pos[1], moved: false, visited: new Set(), lp: null, touch };
   drag.lp = setTimeout(() => {
-    if (drag && !drag.moved) { toggleDog(drag.r, drag.c); drag = null; }
+    if (drag && !drag.moved) {
+      // 手機模式：長按放「另一種」標記；否則維持原本的長按放小狗
+      if (drag.touch && touchMode === 'dog') toggleX(drag.r, drag.c);
+      else toggleDog(drag.r, drag.c);
+      drag = null;
+    }
   }, 450);
 });
 
@@ -786,11 +840,43 @@ boardEl.addEventListener('pointermove', e => {
 function endDrag() {
   if (!drag) return;
   clearTimeout(drag.lp);
-  if (!drag.moved) cycle(drag.r, drag.c); else render();
+  if (drag.moved) render();
+  else if (drag.touch) (touchMode === 'dog' ? toggleDog : toggleX)(drag.r, drag.c);
+  else cycle(drag.r, drag.c);
   drag = null;
 }
 boardEl.addEventListener('pointerup', endDrag);
 boardEl.addEventListener('pointercancel', () => { if (drag) clearTimeout(drag.lp); drag = null; });
+
+// ---------- 手機：標記模式 & 防止連點放大 ----------
+let touchMode = 'x'; // 'x' | 'dog'
+function enableTouchUI() { document.body.classList.add('touch'); }
+if (window.matchMedia && matchMedia('(pointer: coarse)').matches) enableTouchUI();
+function setTouchMode(m) {
+  touchMode = m;
+  for (const b of document.querySelectorAll('#modeBar button')) {
+    const on = b.dataset.mode === m;
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  }
+}
+for (const b of document.querySelectorAll('#modeBar button'))
+  b.addEventListener('pointerdown', e => { e.preventDefault(); setTouchMode(b.dataset.mode); });
+
+// iOS Safari 會忽略 user-scalable=no，連點兩下仍可能放大：
+// 在棋盤與模式按鈕上取消 touchend 的預設動作（遊戲用 pointer 事件，不受影響）
+for (const el of [boardEl, $('modeBar')]) {
+  el.addEventListener('touchend', e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+  el.addEventListener('dblclick', e => e.preventDefault());
+}
+// 其他地方（按鈕之間的空白等）快速連點兩下也不要放大
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 350 && e.cancelable && !e.target.closest('button, select, input, label, a')) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+// iOS 的雙指縮放手勢只在棋盤上擋掉，避免拖曳畫叉時誤縮放
+boardEl.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------- 鍵盤 ----------
 document.addEventListener('keydown', e => {
