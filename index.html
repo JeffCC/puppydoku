@@ -67,6 +67,7 @@
   }
   #modeBar button.on { border-color: var(--accent); background: #fdeee4; box-shadow: inset 0 0 0 1px var(--accent); }
   #modeBar button[data-mode="x"] { color: rgba(0,0,0,.6); font-weight: 700; }
+  #modeBar button[data-mode="q"] { color: #1e6fd9; font-weight: 800; }
   .touchOnly { display: none; }
   body.touch .touchOnly { display: list-item; }
   .cell {
@@ -86,6 +87,8 @@
   }
   .cell.hl { box-shadow: inset 0 0 0 3px #1e6fd9; }
   .cell.tg { box-shadow: inset 0 0 0 3px #e07a3f; }
+  .cell.q .m { color: #1e6fd9; font-weight: 800; }
+  .cell.q.qbad .m { color: #d33; }
   .cell .m.ghost { color: #e07a3f; opacity: .75; }
   #hintBox {
     display: none; background: #fff8e6; border: 2px solid #f0c060; border-radius: 10px;
@@ -137,6 +140,7 @@
       <span id="modeBar" role="group" aria-label="點一下要標記">
         <button type="button" data-mode="x" class="on" aria-pressed="true" aria-label="標叉叉" title="標叉叉">✕</button>
         <button type="button" data-mode="dog" aria-pressed="false" aria-label="放小狗" title="放小狗">🐶</button>
+        <button type="button" data-mode="q" aria-pressed="false" aria-label="不確定" title="不確定">?</button>
       </span>
     </span>
     <span id="timer">00:00</span>
@@ -169,6 +173,7 @@
     <ul>
       <li>點一下格子：空白 → ✖ → 🐶 → 空白</li>
       <li class="touchOnly">手機：先點棋盤上方的 ✕ 或 🐶 小圖示選擇標記，點一下格子就放那個標記（再點一次取消）；長按則放另一種</li>
+      <li class="touchOnly">？：先點 ？ 圖示，再點幾個不確定的格子標上 ？（重複點可取消）。確定沒問題就點 🐶，所有 ？ 會一次變成小狗；發現矛盾就再點一次 ？（或點 ✕），所有 ？ 會全部清除。互相衝突的 ？ 會顯示紅色</li>
       <li>按住拖曳：把經過的空白格都標成 ✖</li>
       <li>右鍵（或長按）：直接放 / 移除小狗</li>
       <li>選取一隻小狗後按 <kbd>E</kbd> 或「排除」按鈕：同一橫列、同一直行、周圍 8 格（可選同色區域）全部標成 ✖</li>
@@ -342,6 +347,7 @@ let P = null;           // puzzle
 let marks = [];         // n x n
 let history = [];
 let sel = null;         // [r,c]
+let qs = new Set();     // 「？」不確定標記（r*n+c），獨立於 marks，不影響原本的 ✕
 let startTime = 0, timerId = null, solved = false;
 
 const $ = id => document.getElementById(id);
@@ -357,7 +363,7 @@ function newGame() {
     if (!p) return;
     P = p;
     marks = Array.from({ length: n }, () => new Array(n).fill(EMPTY));
-    history = []; sel = null; solved = false; clearHint();
+    history = []; sel = null; solved = false; qs.clear(); clearHint();
     buildBoard(); startTimer(); render();
     countEvent(`puppydoku-new-${n}x${n}`);
   }, 20);
@@ -441,6 +447,15 @@ function render() {
   let { dogs, bad } = conflicts();
   const auto = tryAutoFinish(dogs, bad);
   if (auto) ({ dogs, bad } = conflicts());
+  if (solved || auto) qs.clear();
+  // ？ 之間、或 ？ 與小狗之間互相衝突 → 紅色 ？
+  const qList = [...qs].filter(k => marks[Math.floor(k / n)][k % n] !== DOG).map(k => [Math.floor(k / n), k % n]);
+  const qBad = new Set(), reg = P.reg;
+  const clash = ([a, b], [c, d]) => a === c || b === d || reg[a][b] === reg[c][d] || (Math.abs(a - c) <= 1 && Math.abs(b - d) <= 1);
+  qList.forEach((p, i) => {
+    for (const d of dogs) if (clash(p, d)) qBad.add(p[0] * n + p[1]);
+    for (let j = i + 1; j < qList.length; j++) if (clash(p, qList[j])) { qBad.add(p[0] * n + p[1]); qBad.add(qList[j][0] * n + qList[j][1]); }
+  });
   const showBad = $('optConflict').checked;
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     const el = cellEls[r][c], v = marks[r][c];
@@ -452,7 +467,10 @@ function render() {
     el.classList.toggle('hl', !!curHint && curHint.hl.has(key));
     el.classList.toggle('tg', !!curHint && curHint.tg.has(key));
     el.firstChild.classList.toggle('ghost', !!ghost);
-    el.firstChild.textContent = v === DOG ? '🐶' : v === X ? '✕' : ghost === DOG ? '🐶' : ghost === X ? '✕' : '';
+    const q = v !== DOG && qs.has(key);
+    el.classList.toggle('q', q);
+    el.classList.toggle('qbad', q && qBad.has(key));
+    el.firstChild.textContent = q ? '?' : v === DOG ? '🐶' : v === X ? '✕' : ghost === DOG ? '🐶' : ghost === X ? '✕' : '';
   }
   $('info').textContent = `${n} × ${n}　🐶 ${dogs.length} / ${n}`;
   if (!solved && dogs.length === n && bad.size === 0) {
@@ -764,6 +782,7 @@ function resetBoard() {
   if (!P) return;
   snapshot();
   marks = marks.map(row => row.map(() => EMPTY));
+  qs.clear();
   solved = false; sel = null; render();
   if (!timerId) startTimer();
 }
@@ -807,7 +826,7 @@ boardEl.addEventListener('pointerdown', e => {
   drag.lp = setTimeout(() => {
     if (drag && !drag.moved) {
       // 手機模式：長按放「另一種」標記；否則維持原本的長按放小狗
-      if (drag.touch && touchMode === 'dog') toggleX(drag.r, drag.c);
+      if (drag.touch && touchMode !== 'x') toggleX(drag.r, drag.c);
       else toggleDog(drag.r, drag.c);
       drag = null;
     }
@@ -839,7 +858,7 @@ function endDrag() {
   if (!drag) return;
   clearTimeout(drag.lp);
   if (drag.moved) render();
-  else if (drag.touch) (touchMode === 'dog' ? toggleDog : toggleX)(drag.r, drag.c);
+  else if (drag.touch) (touchMode === 'dog' ? toggleDog : touchMode === 'q' ? toggleQ : toggleX)(drag.r, drag.c);
   else cycle(drag.r, drag.c);
   drag = null;
 }
@@ -847,10 +866,26 @@ boardEl.addEventListener('pointerup', endDrag);
 boardEl.addEventListener('pointercancel', () => { if (drag) clearTimeout(drag.lp); drag = null; });
 
 // ---------- 手機：標記模式 & 防止連點放大 ----------
-let touchMode = 'x'; // 'x' | 'dog'
+let touchMode = 'x'; // 'x' | 'dog' | 'q'
 function enableTouchUI() { document.body.classList.add('touch'); }
 if (window.matchMedia && matchMedia('(pointer: coarse)').matches) enableTouchUI();
+function toggleQ(r, c) {
+  if (solved || marks[r][c] === DOG) return;
+  const k = r * P.n + c;
+  if (qs.has(k)) qs.delete(k); else qs.add(k);
+  sel = [r, c]; render();
+}
 function setTouchMode(m) {
+  if (touchMode === 'q') {
+    if (m === 'dog' && qs.size && !solved) {
+      // 確定：所有 ？ 一次變成小狗（可用「復原」一步還原）
+      snapshot();
+      const { n } = P;
+      for (const k of qs) { const r = Math.floor(k / n), c = k % n; if (marks[r][c] !== DOG) setDog(r, c); }
+      qs.clear(); sel = null; render();
+    } else if (qs.size) { qs.clear(); render(); } // 取消 ？ 或改按 ✕：清除所有 ？
+    if (m === 'q') m = 'x';
+  }
   touchMode = m;
   for (const b of document.querySelectorAll('#modeBar button')) {
     const on = b.dataset.mode === m;
