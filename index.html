@@ -459,9 +459,7 @@ function render() {
     solved = true; stopTimer();
     countEvent(`puppydoku-solved-${n}x${n}`);
     $('win').style.display = 'block';
-    $('win').textContent = auto
-      ? `🎉 完成！只剩最後一格，已自動幫你放好小狗。用時 ${$('timer').textContent}`
-      : `🎉 完成！用時 ${$('timer').textContent}`;
+    $('win').textContent = `🎉 完成！用時 ${$('timer').textContent}`;
   }
   if (!solved) $('win').style.display = 'none';
 }
