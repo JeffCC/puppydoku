@@ -3,9 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Puppydoku 皇后謎題</title>
+<title>Puppydoku 皇后謎題 / Queens Puzzle</title>
 <script>
+  // 偵測使用者語系（zh = 中文，其他 = 英文）/ Detect user locale
+  const LANG = (navigator.language || navigator.userLanguage || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  document.documentElement.lang = LANG === 'zh' ? 'zh-Hant' : 'en';
+
   // GoatCounter 訪客統計（只在 GitHub Pages 上啟用；本機開啟不統計）
+  // GoatCounter analytics (only on GitHub Pages)
   const GOATCOUNTER = 'digitalgenius';
   if (location.hostname.endsWith('github.io')) {
     const sc = document.createElement('script');
@@ -109,11 +114,11 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🐶 Puppydoku 皇后謎題</h1>
-  <div class="sub">每行、每列、每個顏色區域各放 1 隻小狗，且小狗之間不能相鄰（含斜角）</div>
+  <h1 id="pageTitle"></h1>
+  <div class="sub" id="pageSub"></div>
 
   <div class="bar">
-    <label>尺寸
+    <label id="sizeLabel"><span id="sizeLabelText"></span>
       <select id="size">
         <option value="5">5 × 5</option>
         <option value="6">6 × 6</option>
@@ -124,21 +129,21 @@
         <option value="11">11 × 11</option>
       </select>
     </label>
-    <button class="primary" id="newBtn">🎲 新題目</button>
-    <button id="resetBtn">↺ 重來</button>
-    <button id="undoBtn">↶ 復原</button>
-    <button id="hintBtn">💡 提示</button>
-    <button id="hintV2Btn">💡 提示v2</button>
+    <button class="primary" id="newBtn"></button>
+    <button id="resetBtn"></button>
+    <button id="undoBtn"></button>
+    <button id="hintBtn"></button>
+    <button id="hintV2Btn"></button>
   </div>
   <div id="loading"></div>
 
   <div class="status">
     <span class="left">
       <span id="info"></span>
-      <span id="modeBar" role="group" aria-label="點一下要標記（快捷鍵 1 / 2 / 3）">
-        <button type="button" data-mode="x" class="on" aria-pressed="true" aria-label="標叉叉" title="標叉叉（1）">✕</button>
-        <button type="button" data-mode="dog" aria-pressed="false" aria-label="放小狗" title="放小狗（2）">🐶</button>
-        <button type="button" data-mode="q" aria-pressed="false" aria-label="不確定" title="不確定（3）">?</button>
+      <span id="modeBar" role="group">
+        <button type="button" data-mode="x" class="on" aria-pressed="true">✕</button>
+        <button type="button" data-mode="dog" aria-pressed="false">🐶</button>
+        <button type="button" data-mode="q" aria-pressed="false">?</button>
       </span>
     </span>
     <span id="timer">00:00</span>
@@ -147,50 +152,215 @@
   <div id="win"></div>
   <div id="hintBox">
     <div id="hintText"></div>
-    <div class="legend"><span style="color:#1e6fd9">藍框</span>＝推理依據的格子　<span style="color:#e07a3f">橘框</span>＝結論（可以放小狗 / 標 ✖ 的格子）</div>
+    <div class="legend" id="hintLegend"></div>
     <div class="bar">
-      <button class="primary" id="hintMore">再多提示一點</button>
-      <button class="primary" id="hintApply">套用這個提示</button>
-      <button id="hintClose">關閉</button>
+      <button class="primary" id="hintMore"></button>
+      <button class="primary" id="hintApply"></button>
+      <button id="hintClose"></button>
     </div>
   </div>
 
   <div class="bar">
-    <button class="big primary" id="exclBtn">✖ 排除選取小狗周圍 <kbd>E</kbd></button>
-    <button class="big" id="exclAllBtn">✖ 全部小狗排除 <kbd>A</kbd></button>
+    <button class="big primary" id="exclBtn"></button>
+    <button class="big" id="exclAllBtn"></button>
   </div>
 
   <div class="opts">
-    <label><input type="checkbox" id="optRegion" checked> 排除時也標記同色區域</label>
-    <label><input type="checkbox" id="optAuto" checked> 放小狗時自動排除</label>
-    <label><input type="checkbox" id="optConflict" checked> 顯示衝突</label>
+    <label><input type="checkbox" id="optRegion" checked> <span id="optRegionText"></span></label>
+    <label><input type="checkbox" id="optAuto" checked> <span id="optAutoText"></span></label>
+    <label><input type="checkbox" id="optConflict" checked> <span id="optConflictText"></span></label>
   </div>
 
-  <div class="help">
-    <h3>操作方式</h3>
-    <ul>
-      <li>先點棋盤上方的 ✕ / 🐶 / ？ 小圖示（或按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>）選擇標記，點一下格子就放那個標記（再點一次取消）</li>
-      <li>右鍵（或長按）：放「另一種」標記——✕ / ？ 模式下放 🐶，🐶 模式下放 ✕</li>
-      <li>？：先點 ？ 圖示，再點幾個不確定的格子標上 ？（重複點可取消）。確定沒問題就點 🐶，所有 ？ 會一次變成小狗；發現矛盾就再點一次 ？（或點 ✕），所有 ？ 會全部清除。互相衝突的 ？ 會顯示紅色</li>
-      <li>按住拖曳：把經過的空白格都標成 ✖</li>
-      <li>選取一隻小狗後按 <kbd>E</kbd> 或「排除」按鈕：同一橫列、同一直行、周圍 8 格（可選同色區域）全部標成 ✖</li>
-      <li>放好倒數第二隻小狗後，如果盤面只剩一格空格且正是最後一隻小狗，會自動放好並完成</li>
-      <li>紅色斜線：小狗互相衝突，或某橫列／直行／顏色區域已全被 ✖ 而沒有小狗（死路，代表前面有小狗放錯）</li>
-      <li>💡 提示：依目前盤面寫出「下一步推理」，藍框是依據、橘框是結論，可按「套用」自動標上</li>
-      <li>鍵盤：方向鍵移動、<kbd>Space</kbd> 切換、<kbd>D</kbd> 小狗、<kbd>X</kbd> 叉叉、<kbd>E</kbd> 排除、<kbd>A</kbd> 全部排除、<kbd>Ctrl+Z</kbd> 復原</li>
-    </ul>
-    <h3>規則</h3>
-    <ul>
-      <li>小狗周圍 8 格（上下左右 + 斜角）不能有其他小狗</li>
-      <li>每一橫列剛好 1 隻、每一直行剛好 1 隻</li>
-      <li>每個顏色區域剛好 1 隻</li>
-    </ul>
-    每道題目都由程式自動產生並驗證「唯一解」。
-  </div>
+  <div class="help" id="helpBox"></div>
 </div>
 
 <script>
 'use strict';
+
+// ---------- 多語系文字 / i18n strings ----------
+const STRINGS = {
+  zh: {
+    title: '🐶 Puppydoku 皇后謎題',
+    sub: '每行、每列、每個顏色區域各放 1 隻小狗，且小狗之間不能相鄰（含斜角）',
+    size: '尺寸',
+    newBtn: '🎲 新題目',
+    resetBtn: '↺ 重來',
+    undoBtn: '↶ 復原',
+    hintBtn: '💡 提示',
+    hintV2Btn: '💡 提示v2',
+    modeX: '標叉叉（1）',
+    modeDog: '放小狗（2）',
+    modeQ: '不確定（3）',
+    modeBarLabel: '點一下要標記（快捷鍵 1 / 2 / 3）',
+    hintLegend: '<span style="color:#1e6fd9">藍框</span>＝推理依據的格子　<span style="color:#e07a3f">橘框</span>＝結論（可以放小狗 / 標 ✖ 的格子）',
+    hintMore: '再多提示一點',
+    hintApply: '套用這個提示',
+    hintClose: '關閉',
+    exclBtn: '✖ 排除選取小狗周圍 <kbd>E</kbd>',
+    exclAllBtn: '✖ 全部小狗排除 <kbd>A</kbd>',
+    optRegion: '排除時也標記同色區域',
+    optAuto: '放小狗時自動排除',
+    optConflict: '顯示衝突',
+    loading: '出題中…',
+    loadFail: '出題失敗，請再試一次',
+    pickDog: '請先選取一隻小狗',
+    winPrefix: '🎉 完成！用時 ',
+    infoCount: (n, d) => `${n} × ${n}　🐶 ${d} / ${n}`,
+    infoSize: n => `${n} × ${n}`,
+    help: `
+      <h3>操作方式</h3>
+      <ul>
+        <li>先點棋盤上方的 ✕ / 🐶 / ？ 小圖示（或按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>）選擇標記，點一下格子就放那個標記（再點一次取消）</li>
+        <li>右鍵（或長按）：放「另一種」標記——✕ / ？ 模式下放 🐶，🐶 模式下放 ✕</li>
+        <li>？：先點 ？ 圖示，再點幾個不確定的格子標上 ？（重複點可取消）。確定沒問題就點 🐶，所有 ？ 會一次變成小狗；發現矛盾就再點一次 ？（或點 ✕），所有 ？ 會全部清除。互相衝突的 ？ 會顯示紅色</li>
+        <li>按住拖曳：把經過的空白格都標成 ✖</li>
+        <li>選取一隻小狗後按 <kbd>E</kbd> 或「排除」按鈕：同一橫列、同一直行、周圍 8 格（可選同色區域）全部標成 ✖</li>
+        <li>放好倒數第二隻小狗後，如果盤面只剩一格空格且正是最後一隻小狗，會自動放好並完成</li>
+        <li>紅色斜線：小狗互相衝突，或某橫列／直行／顏色區域已全被 ✖ 而沒有小狗（死路，代表前面有小狗放錯）</li>
+        <li>💡 提示：依目前盤面寫出「下一步推理」，藍框是依據、橘框是結論，可按「套用」自動標上</li>
+        <li>鍵盤：方向鍵移動、<kbd>Space</kbd> 切換、<kbd>D</kbd> 小狗、<kbd>X</kbd> 叉叉、<kbd>E</kbd> 排除、<kbd>A</kbd> 全部排除、<kbd>Ctrl+Z</kbd> 復原</li>
+      </ul>
+      <h3>規則</h3>
+      <ul>
+        <li>小狗周圍 8 格（上下左右 + 斜角）不能有其他小狗</li>
+        <li>每一橫列剛好 1 隻、每一直行剛好 1 隻</li>
+        <li>每個顏色區域剛好 1 隻</li>
+      </ul>
+      每道題目都由程式自動產生並驗證「唯一解」。`,
+    colors: ['紅', '淺橘', '黃', '綠', '青', '藍', '紫', '粉紅', '棕', '灰', '深橘'],
+    typeWord: { row: '橫列', col: '直行', reg: '顏色區域' },
+    gName: g => g.type === 'row' ? `第 ${g.idx + 1} 橫列` : g.type === 'col' ? `第 ${g.idx + 1} 直行` : `${STRINGS.zh.colors[g.idx]}色區域`,
+    cName: ([r, c]) => `第 ${r + 1} 橫列第 ${c + 1} 直行`,
+    hintPrefix: '💡 ',
+    hintErrDog: cn => `${cn} 的小狗放錯了，照這樣下去最後一定會有某個橫列 / 直行 / 顏色區域放不下小狗。建議先把它移除（也檢查一下因它而標的 ✖）。`,
+    hintErrX: cn => `${cn} 被標了 ✖，但目前的線索還不能排除這一格，這個 ✖ 標錯了。`,
+    hintPending: (cn, color) => `${cn} 已經有小狗了，所以同一橫列、同一直行、周圍 8 格，以及同一個${color}色區域，都不可能再有小狗（可以直接按 E 排除）。`,
+    hintSingle: (gn, cn) => `${gn} 只剩下 ${cn} 這一格還能放小狗，所以這格一定是小狗。`,
+    hintCommonLine: (gn, k, lineName) => `${gn} 剩下的 ${k} 個可能位置（藍框）全都在${lineName}裡，所以${lineName}的那一隻小狗一定屬於${gn}。因此${lineName}中其他（橘框）的格子都不可能有小狗。`,
+    hintCommon2: (gn, cn1, cn2) => `${gn} 的小狗只能在 ${cn1} 或 ${cn2}（藍框）。不論是哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`,
+    hintCommonN: (gn, k) => `${gn} 的小狗只能在藍框的 ${k} 格之一。不論放在哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`,
+    hintSubset: (groupNames, k, typeA, lineNames, typeB) => `${groupNames} 這 ${k} 個${typeA}的小狗，全部只能落在 ${lineNames} 這 ${k} 個${typeB}裡（藍框）。這 ${k} 個${typeB}剛好要放 ${k} 隻小狗，已經被它們用完了，所以這些${typeB}中其他（橘框）的格子都不可能有小狗。`,
+    hintAssume: (cn, chainStr, gn) => {
+      let t = `假設 ${cn}（橘框）放小狗：`;
+      if (chainStr) t += `接著 ${chainStr} 會被迫放小狗，`;
+      t += `結果${gn}（藍框）就沒有任何格子可以放小狗了，矛盾。所以 ${cn} 不可能有小狗。`;
+      return t;
+    },
+    hintReveal: cn => `目前找不到簡單的推理步驟，直接告訴你：${cn} 是小狗。`,
+    hintV2Single: '盤面上有一格已經可以確定是小狗了，試著找出來！（提示：哪個橫列、直行或顏色區域只剩下一格能放？）',
+    hintV2SingleGroup: gn => `看看${gn}（藍框），它還剩幾格可以放小狗？`,
+    hintV2Pending: '藍框這隻小狗周圍還有格子沒排除，想想看哪些格子不能再放小狗？',
+    hintV2Common: '橘框的格子都可以標 ✖。想想看為什麼？',
+    joinComma: '、',
+    arrow: ' → ',
+  },
+  en: {
+    title: '🐶 Puppydoku Queens Puzzle',
+    sub: 'Place 1 puppy in each row, column, and color region, with no two puppies adjacent (including diagonally)',
+    size: 'Size',
+    newBtn: '🎲 New Puzzle',
+    resetBtn: '↺ Reset',
+    undoBtn: '↶ Undo',
+    hintBtn: '💡 Hint',
+    hintV2Btn: '💡 Hint v2',
+    modeX: 'Mark X (1)',
+    modeDog: 'Place puppy (2)',
+    modeQ: 'Uncertain (3)',
+    modeBarLabel: 'Tap to choose mark (shortcuts 1 / 2 / 3)',
+    hintLegend: '<span style="color:#1e6fd9">Blue</span> = reasoning cells　<span style="color:#e07a3f">Orange</span> = conclusion (cells to place puppy / mark ✖)',
+    hintMore: 'More hint',
+    hintApply: 'Apply this hint',
+    hintClose: 'Close',
+    exclBtn: '✖ Exclude around selected puppy <kbd>E</kbd>',
+    exclAllBtn: '✖ Exclude around all puppies <kbd>A</kbd>',
+    optRegion: 'Also mark same-color region when excluding',
+    optAuto: 'Auto-exclude when placing a puppy',
+    optConflict: 'Show conflicts',
+    loading: 'Generating…',
+    loadFail: 'Generation failed, please try again',
+    pickDog: 'Please select a puppy first',
+    winPrefix: '🎉 Solved! Time: ',
+    infoCount: (n, d) => `${n} × ${n}　🐶 ${d} / ${n}`,
+    infoSize: n => `${n} × ${n}`,
+    help: `
+      <h3>How to play</h3>
+      <ul>
+        <li>Tap the ✕ / 🐶 / ？ icons above the board (or press <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>) to choose a mark, then tap a cell to place it (tap again to clear)</li>
+        <li>Right-click (or long-press): place the "other" mark — in ✕ / ？ mode place 🐶; in 🐶 mode place ✕</li>
+        <li>？: tap the ？ icon, then tap uncertain cells to mark them with ？ (tap again to clear). When you're sure, tap 🐶 and all ？ marks become puppies at once; if you find a contradiction, tap ？ again (or ✕) to clear all ？ marks. Conflicting ？ cells turn red</li>
+        <li>Drag: mark all empty cells you drag over with ✖</li>
+        <li>Select a puppy and press <kbd>E</kbd> or the "Exclude" button: same row, same column, surrounding 8 cells (optionally same-color region) are all marked ✖</li>
+        <li>After placing the second-to-last puppy: if only one empty cell remains and it's the final puppy's spot, it will be placed automatically</li>
+        <li>Red diagonal stripes: puppies conflict, or a row/column/color region is fully ✖ with no puppy (dead end — a previous puppy is in the wrong place)</li>
+        <li>💡 Hint: shows the next reasoning step based on the current board. Blue = reasoning, orange = conclusion. Press "Apply" to apply it</li>
+        <li>Keyboard: arrows to move, <kbd>Space</kbd> cycle, <kbd>D</kbd> puppy, <kbd>X</kbd> cross, <kbd>E</kbd> exclude, <kbd>A</kbd> exclude all, <kbd>Ctrl+Z</kbd> undo</li>
+      </ul>
+      <h3>Rules</h3>
+      <ul>
+        <li>No other puppy in the 8 surrounding cells (orthogonal + diagonal)</li>
+        <li>Exactly 1 puppy per row and per column</li>
+        <li>Exactly 1 puppy per color region</li>
+      </ul>
+      Every puzzle is auto-generated and verified to have a unique solution.`,
+    colors: ['red', 'light-orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink', 'brown', 'gray', 'dark-orange'],
+    typeWord: { row: 'row', col: 'column', reg: 'color region' },
+    gName: g => g.type === 'row' ? `row ${g.idx + 1}` : g.type === 'col' ? `column ${g.idx + 1}` : `the ${STRINGS.en.colors[g.idx]} region`,
+    cName: ([r, c]) => `(row ${r + 1}, column ${c + 1})`,
+    hintPrefix: '💡 ',
+    hintErrDog: cn => `The puppy at ${cn} is in the wrong place — continuing like this will leave some row / column / color region without a puppy. Remove it (and check the ✖ marks it caused).`,
+    hintErrX: cn => `${cn} is marked ✖, but the current clues don't yet rule out this cell. This ✖ is wrong.`,
+    hintPending: (cn, color) => `${cn} already has a puppy, so the same row, same column, surrounding 8 cells, and the same ${color} region can't have another puppy (press E to exclude).`,
+    hintSingle: (gn, cn) => `${gn} has only ${cn} left where a puppy can go, so it must be a puppy.`,
+    hintCommonLine: (gn, k, lineName) => `The ${k} remaining possible positions in ${gn} (blue) all lie in ${lineName}, so the puppy of ${lineName} must belong to ${gn}. Therefore the other cells (orange) in ${lineName} can't have a puppy.`,
+    hintCommon2: (gn, cn1, cn2) => `The puppy of ${gn} can only go at ${cn1} or ${cn2} (blue). Either way, the orange cells are excluded (same row, column, adjacency, or color), so none of the orange cells can have a puppy.`,
+    hintCommonN: (gn, k) => `The puppy of ${gn} can only go in one of the ${k} blue cells. Wherever it goes, the orange cells are excluded (same row, column, adjacency, or color), so none of them can have a puppy.`,
+    hintSubset: (groupNames, k, typeA, lineNames, typeB) => `The puppies of these ${k} ${typeA}s (${groupNames}) can only fall into these ${k} ${typeB}s (${lineNames}) — blue. These ${k} ${typeB}s need exactly ${k} puppies, which these fill, so the other (orange) cells in those ${typeB}s can't have a puppy.`,
+    hintAssume: (cn, chainStr, gn) => {
+      let t = `Suppose a puppy goes at ${cn} (orange): `;
+      if (chainStr) t += `then ${chainStr} would be forced to be puppies, `;
+      t += `but then ${gn} (blue) would have no cell left for a puppy — contradiction. So ${cn} can't have a puppy.`;
+      return t;
+    },
+    hintReveal: cn => `No simple reasoning step found. Direct answer: ${cn} is a puppy.`,
+    hintV2Single: 'One cell on the board can already be determined as a puppy — try to find it! (Hint: which row, column, or color region has only one spot left?)',
+    hintV2SingleGroup: gn => `Look at ${gn} (blue) — how many cells are left for a puppy?`,
+    hintV2Pending: 'The puppy in the blue cell still has unresolved neighbors — think about which cells can no longer hold a puppy.',
+    hintV2Common: 'The orange cells can all be marked ✖. Think about why.',
+    joinComma: ', ',
+    arrow: ' → ',
+  },
+};
+const T = STRINGS[LANG];
+
+// ---------- 套用 UI 文字 / Apply UI text ----------
+function applyUIText() {
+  document.title = LANG === 'zh' ? 'Puppydoku 皇后謎題' : 'Puppydoku Queens Puzzle';
+  document.getElementById('pageTitle').textContent = T.title;
+  document.getElementById('pageSub').textContent = T.sub;
+  document.getElementById('sizeLabelText').textContent = T.size + ' ';
+  document.getElementById('newBtn').textContent = T.newBtn;
+  document.getElementById('resetBtn').textContent = T.resetBtn;
+  document.getElementById('undoBtn').textContent = T.undoBtn;
+  document.getElementById('hintBtn').textContent = T.hintBtn;
+  document.getElementById('hintV2Btn').textContent = T.hintV2Btn;
+  const mb = document.getElementById('modeBar');
+  mb.setAttribute('aria-label', T.modeBarLabel);
+  const [bx, bd, bq] = mb.querySelectorAll('button');
+  bx.setAttribute('aria-label', T.modeX); bx.title = T.modeX;
+  bd.setAttribute('aria-label', T.modeDog); bd.title = T.modeDog;
+  bq.setAttribute('aria-label', T.modeQ); bq.title = T.modeQ;
+  document.getElementById('hintLegend').innerHTML = T.hintLegend;
+  document.getElementById('hintMore').textContent = T.hintMore;
+  document.getElementById('hintApply').textContent = T.hintApply;
+  document.getElementById('hintClose').textContent = T.hintClose;
+  document.getElementById('exclBtn').innerHTML = T.exclBtn;
+  document.getElementById('exclAllBtn').innerHTML = T.exclAllBtn;
+  document.getElementById('optRegionText').textContent = T.optRegion;
+  document.getElementById('optAutoText').textContent = T.optAuto;
+  document.getElementById('optConflictText').textContent = T.optConflict;
+  document.getElementById('helpBox').innerHTML = T.help;
+}
+applyUIText();
 
 const COLORS = [
   '#f4a6a6', '#f9cf8f', '#f6ec92', '#b9e3a1', '#9fd8d3',
@@ -353,10 +523,10 @@ let cellEls = [];
 
 function newGame() {
   const n = +$('size').value;
-  $('loading').textContent = '出題中…';
+  $('loading').textContent = T.loading;
   setTimeout(() => {
     const p = generatePuzzle(n);
-    $('loading').textContent = p ? '' : '出題失敗，請再試一次';
+    $('loading').textContent = p ? '' : T.loadFail;
     if (!p) return;
     P = p;
     marks = Array.from({ length: n }, () => new Array(n).fill(EMPTY));
@@ -396,7 +566,7 @@ function buildBoard() {
     }
     cellEls.push(row);
   }
-  $('info').textContent = `${n} × ${n}`;
+  $('info').textContent = T.infoSize(n);
 }
 
 function conflicts() {
@@ -469,12 +639,12 @@ function render() {
     el.classList.toggle('qbad', q && qBad.has(key));
     el.firstChild.textContent = q ? '?' : v === DOG ? '🐶' : v === X ? '✕' : ghost === DOG ? '🐶' : ghost === X ? '✕' : '';
   }
-  $('info').textContent = `${n} × ${n}　🐶 ${dogs.length} / ${n}`;
+  $('info').textContent = T.infoCount(n, dogs.length);
   if (!solved && dogs.length === n && bad.size === 0) {
     solved = true; stopTimer();
     countEvent(`puppydoku-solved-${n}x${n}`);
     $('win').style.display = 'block';
-    $('win').textContent = `🎉 完成！用時 ${$('timer').textContent}`;
+    $('win').textContent = `${T.winPrefix}${$('timer').textContent}`;
   }
   if (!solved) $('win').style.display = 'none';
 }
@@ -533,7 +703,7 @@ function excludeAround(r, c) {
 function excludeSelected() {
   if (!P || solved) return;
   if (!sel || marks[sel[0]][sel[1]] !== DOG) {
-    flash('請先選取一隻小狗'); return;
+    flash(T.pickDog); return;
   }
   snapshot(); excludeAround(sel[0], sel[1]); render();
 }
@@ -547,7 +717,6 @@ function excludeAll() {
 }
 
 // ---------- 推理提示 ----------
-const COLOR_NAMES = ['紅', '淺橘', '黃', '綠', '青', '藍', '紫', '粉紅', '棕', '灰', '深橘'];
 let hk = {};          // findHint 用來標記提示種類
 let hintStages = [], hintLevel = 0; // 提示 v2：分段提示
 let curHint = null; // { text, hl:Set, tg:Map(key→DOG|X|EMPTY), apply:[[r,c,v]] }
@@ -562,11 +731,8 @@ function groupsOf(n, reg) {
   }
   return gs;
 }
-const TYPE_WORD = { row: '橫列', col: '直行', reg: '顏色區域' };
-function gName(g) {
-  return g.type === 'row' ? `第 ${g.idx + 1} 橫列` : g.type === 'col' ? `第 ${g.idx + 1} 直行` : `${COLOR_NAMES[g.idx]}色區域`;
-}
-const cName = ([r, c]) => `第 ${r + 1} 橫列第 ${c + 1} 直行`;
+const gName = g => T.gName(g);
+const cName = p => T.cName(p);
 // 小狗在 a 時，b 是否被排除
 function hits(reg, a, b) {
   return a[0] === b[0] || a[1] === b[1] || reg[a[0]][a[1]] === reg[b[0]][b[1]] ||
@@ -598,10 +764,10 @@ function findHint() {
   // 1) 先檢查錯誤
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     if (marks[r][c] === DOG && sol[r] !== c)
-      return (hk = { kind: 'error' }, makeHint(`${cName([r, c])} 的小狗放錯了，照這樣下去最後一定會有某個橫列 / 直行 / 顏色區域放不下小狗。建議先把它移除（也檢查一下因它而標的 ✖）。`, [], [], [], [[r, c]]));
+      return (hk = { kind: 'error' }, makeHint(T.hintErrDog(cName([r, c])), [], [], [], [[r, c]]));
   }
   for (let r = 0; r < n; r++) if (marks[r][sol[r]] === X)
-    return (hk = { kind: 'error' }, makeHint(`${cName([r, sol[r]])} 被標了 ✖，但目前的線索還不能排除這一格，這個 ✖ 標錯了。`, [], [], [], [[r, sol[r]]]));
+    return (hk = { kind: 'error' }, makeHint(T.hintErrX(cName([r, sol[r]])), [], [], [], [[r, sol[r]]]));
 
   // 2) 已放的小狗還沒排除完
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
@@ -610,7 +776,7 @@ function findHint() {
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++)
       if (marks[i][j] === EMPTY && hits(reg, [r, c], [i, j])) xs.push([i, j]);
     if (xs.length)
-      return (hk = { kind: 'pending', dog: [r, c] }, makeHint(`${cName([r, c])} 已經有小狗了，所以同一橫列、同一直行、周圍 8 格，以及同一個${COLOR_NAMES[reg[r][c]]}色區域，都不可能再有小狗（可以直接按 E 排除）。`, [[r, c]], [], xs));
+      return (hk = { kind: 'pending', dog: [r, c] }, makeHint(T.hintPending(cName([r, c]), T.colors[reg[r][c]]), [[r, c]], [], xs));
   }
 
   const st = marks.map(row => row.slice());
@@ -621,7 +787,7 @@ function findHint() {
   for (const t of ['reg', 'row', 'col']) for (const g of open.filter(g => g.type === t)) {
     const cs = cands(g);
     if (cs.length === 1)
-      return (hk = { kind: 'single', group: g }, makeHint(`${gName(g)} 只剩下 ${cName(cs[0])} 這一格還能放小狗，所以這格一定是小狗。`, g.cells, cs));
+      return (hk = { kind: 'single', group: g }, makeHint(T.hintSingle(gName(g), cName(cs[0])), g.cells, cs));
   }
 
   // 4) 某組的所有可能位置都會排除的格子
@@ -644,14 +810,14 @@ function findHint() {
       if (lines.size !== 1) continue;
       const line = { type: t, idx: [...lines][0] };
       if (xs.every(p => lineOf(t, p, reg) === line.idx)) {
-        why = `${gName(g)} 剩下的 ${cs.length} 個可能位置（藍框）全都在${gName(line)}裡，所以${gName(line)}的那一隻小狗一定屬於${gName(g)}。因此${gName(line)}中其他（橘框）的格子都不可能有小狗。`;
+        why = T.hintCommonLine(gName(g), cs.length, gName(line));
         break;
       }
     }
     if (!why) {
       why = cs.length === 2
-        ? `${gName(g)} 的小狗只能在 ${cName(cs[0])} 或 ${cName(cs[1])}（藍框）。不論是哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`
-        : `${gName(g)} 的小狗只能在藍框的 ${cs.length} 格之一。不論放在哪一格，橘框的格子都會被它排除（同橫列、同直行、相鄰或同色），所以橘框格子都不可能有小狗。`;
+        ? T.hintCommon2(gName(g), cName(cs[0]), cName(cs[1]))
+        : T.hintCommonN(gName(g), cs.length);
     }
     return (hk = { kind: 'common' }, makeHint(why, cs, [], xs));
   }
@@ -677,9 +843,10 @@ function findHint() {
   if (subsetHints.length) {
     subsetHints.sort((a, b) => a.k - b.k || b.xs.length - a.xs.length);
     const { A, B, k, picked, lines, xs } = subsetHints[0];
-    const lineNames = [...lines].sort((a, b) => a - b).map(i => gName({ type: B, idx: i }));
+    const lineNames = [...lines].sort((a, b) => a - b).map(i => gName({ type: B, idx: i })).join(T.joinComma);
+    const groupNames = picked.map(p => gName(p.g)).join(T.joinComma);
     const hl = picked.flatMap(({ g }) => cands(g));
-    return (hk = { kind: 'subset' }, makeHint(`${picked.map(p => gName(p.g)).join('、')} 這 ${k} 個${TYPE_WORD[A]}的小狗，全部只能落在 ${lineNames.join('、')} 這 ${k} 個${TYPE_WORD[B]}裡（藍框）。這 ${k} 個${TYPE_WORD[B]}剛好要放 ${k} 隻小狗，已經被它們用完了，所以這些${TYPE_WORD[B]}中其他（橘框）的格子都不可能有小狗。`, hl, [], xs));
+    return (hk = { kind: 'subset' }, makeHint(T.hintSubset(groupNames, k, T.typeWord[A], lineNames, T.typeWord[B]), hl, [], xs));
   }
 
   // 6) 假設法：放下去會導致某組沒有位置
@@ -704,17 +871,15 @@ function findHint() {
   }
   if (best) {
     const { p, chain, fail } = best;
-    let t = `假設 ${cName(p)}（橘框）放小狗：`;
-    if (chain.length) t += `接著 ${chain.map(cName).join(' → ')} 會被迫放小狗，`;
-    t += `結果${gName(fail)}（藍框）就沒有任何格子可以放小狗了，矛盾。所以 ${cName(p)} 不可能有小狗。`;
-    return (hk = { kind: 'assume' }, makeHint(t, fail.cells, [], [p]));
+    const chainStr = chain.length ? chain.map(cName).join(T.arrow) : '';
+    return (hk = { kind: 'assume' }, makeHint(T.hintAssume(cName(p), chainStr, gName(fail)), fail.cells, [], [p]));
   }
 
   // 7) 找不到簡單推理：直接給一隻
   const rows = [...Array(n).keys()].filter(r => marks[r][sol[r]] !== DOG);
   if (!rows.length) return null;
   const r = rows[0];
-  return (hk = { kind: 'reveal' }, makeHint(`目前找不到簡單的推理步驟，直接告訴你：${cName([r, sol[r]])} 是小狗。`, [], [[r, sol[r]]]));
+  return (hk = { kind: 'reveal' }, makeHint(T.hintReveal(cName([r, sol[r]])), [], [[r, sol[r]]]));
 }
 
 function hint() {
@@ -732,14 +897,14 @@ function hintV2() {
   const none = { hl: new Set(), tg: new Map(), apply: [] };
   const stages = [];
   if (h.kind === 'single') {
-    stages.push({ ...none, text: '盤面上有一格已經可以確定是小狗了，試著找出來！（提示：哪個橫列、直行或顏色區域只剩下一格能放？）' });
+    stages.push({ ...none, text: T.hintV2Single });
     const { n } = P, hl = new Set(h.group.cells.map(([r, c]) => r * n + c));
-    stages.push({ ...none, hl, text: `看看${gName(h.group)}（藍框），它還剩幾格可以放小狗？` });
+    stages.push({ ...none, hl, text: T.hintV2SingleGroup(gName(h.group)) });
   } else if (h.kind === 'pending') {
     const { n } = P;
-    stages.push({ ...none, hl: new Set([h.dog[0] * n + h.dog[1]]), text: '藍框這隻小狗周圍還有格子沒排除，想想看哪些格子不能再放小狗？' });
+    stages.push({ ...none, hl: new Set([h.dog[0] * n + h.dog[1]]), text: T.hintV2Pending });
   } else if (h.kind === 'common' || h.kind === 'subset' || h.kind === 'assume') {
-    stages.push({ ...none, tg: h.tg, text: '橘框的格子都可以標 ✖。想想看為什麼？' });
+    stages.push({ ...none, tg: h.tg, text: T.hintV2Common });
   }
   stages.push(h);
   showStages(stages);
@@ -752,7 +917,7 @@ function showStages(stages) {
 function showHintLevel() {
   curHint = hintStages[hintLevel];
   const last = hintLevel === hintStages.length - 1;
-  $('hintText').textContent = '💡 ' + curHint.text;
+  $('hintText').textContent = T.hintPrefix + curHint.text;
   $('hintApply').style.display = last ? '' : 'none';
   $('hintMore').style.display = last ? 'none' : '';
   $('hintBox').style.display = 'block';
